@@ -1,5 +1,6 @@
 import streamlit as st
 from google import genai
+from google.genai import types
 import zipfile
 import io
 import time
@@ -8,14 +9,14 @@ import time
 st.set_page_config(page_title="Rinomina Bulloni", page_icon="🔩")
 st.title("🔩 Automazione Bulloni")
 
-# Recupero Chiave API
+# Recupero Chiave API dai Secrets
 api_key = st.secrets.get("GEMINI_API_KEY")
 
 if not api_key:
-    st.error("Configura la chiave API nei Secrets!")
+    st.error("Configura la chiave API nei Secrets di Streamlit!")
     st.stop()
 
-# Nuova inizializzazione Client 2026
+# Inizializzazione Client
 client = genai.Client(api_key=api_key)
 MODEL_ID = "gemini-1.5-flash"
 
@@ -35,17 +36,18 @@ if uploaded_files:
                     status.text(f"Analizzando: {file.name}...")
                     img_data = file.getvalue()
                     
-                    # Nuova sintassi per generare contenuti
+                    # SINTASSI CORRETTA 2026: Usiamo types.Part per i dati binari
                     response = client.models.generate_content(
                         model=MODEL_ID,
                         contents=[
-                            "Analizza l'immagine. Scrivi solo il numero del primo e dell'ultimo bullone separati da un trattino (es: 37-35).",
-                            {"mime_type": "image/jpeg", "data": img_data}
+                            "Analizza l'immagine. Scrivi solo il numero del primo e dell'ultimo bullone visibili separati da un trattino (es: 37-35).",
+                            types.Part.from_bytes(data=img_data, mime_type="image/jpeg")
                         ]
                     )
                     
                     testo = response.text.strip().replace(" ", "")
                     
+                    # Validazione minima del nome
                     if "-" in testo and len(testo) < 15:
                         nuovo_nome = f"bulloni {testo}.jpg"
                         successo += 1
@@ -58,10 +60,12 @@ if uploaded_files:
 
                 zip_file.writestr(nuovo_nome, img_data)
                 progress.progress((i + 1) / len(uploaded_files))
-                time.sleep(1)
+                time.sleep(1) # Rispetto dei limiti API
 
         status.text("✅ Elaborazione finita!")
         
         if successo > 0:
             st.success(f"Completato! {successo} file pronti.")
             st.download_button("💾 SCARICA ZIP", zip_buffer.getvalue(), "bulloni_finiti.zip")
+        else:
+            st.error("L'AI non ha riconosciuto il formato dei numeri. Riprova.")
