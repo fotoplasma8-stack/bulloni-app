@@ -14,21 +14,9 @@ if not api_key:
     st.error("Configura la chiave API nei Secrets!")
     st.stop()
 
-# Inizializzazione standard senza forzare versioni
 client = genai.Client(api_key=api_key)
-
-# PROVIAMO IL MODELLO 2.0 (Più recente e spesso risolve i 404 del 1.5)
-MODEL_ID = "gemini-2.0-flash" 
-
-# PULSANTE DI DIAGNOSI (Per capire cosa vede la tua chiave)
-if st.sidebar.button("🔍 Controlla Modelli Disponibili"):
-    try:
-        models = client.models.list()
-        st.sidebar.write("Modelli che puoi usare:")
-        for m in models:
-            st.sidebar.code(m.name)
-    except Exception as e:
-        st.sidebar.error(f"Errore lista: {e}")
+# Torniamo al 1.5 che ha più quota del 2.0
+MODEL_ID = "gemini-1.5-flash" 
 
 uploaded_files = st.file_uploader("Carica le foto", accept_multiple_files=True, type=['jpg', 'jpeg', 'png'])
 
@@ -46,6 +34,7 @@ if uploaded_files:
                     status.text(f"Analizzando: {file.name}...")
                     img_data = file.getvalue()
                     
+                    # Chiamata con gestione automatica della quota
                     response = client.models.generate_content(
                         model=MODEL_ID,
                         contents=[
@@ -59,12 +48,18 @@ if uploaded_files:
                     successo += 1
                     
                 except Exception as e:
-                    st.error(f"Errore su {file.name}: {e}")
-                    nuovo_nome = f"errore_{file.name}"
+                    if "429" in str(e):
+                        st.warning(f"Quota esaurita per un attimo. Aspetto 20 secondi...")
+                        time.sleep(20) # Aspetta se Google è stanco
+                        # Non salviamo il file come errore, lo riproveremo al prossimo giro
+                        continue 
+                    else:
+                        st.error(f"Errore su {file.name}: {e}")
+                        nuovo_nome = f"errore_{file.name}"
 
                 zip_file.writestr(nuovo_nome, img_data)
                 progress.progress((i + 1) / len(uploaded_files))
-                time.sleep(1)
+                time.sleep(4) # Pausa più lunga tra una foto e l'altra per non irritare Google
 
         if successo > 0:
             st.success("Completato!")
