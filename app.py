@@ -1,58 +1,72 @@
 import streamlit as st
 import google.generativeai as genai
-from google.generativeai.types import RequestOptions
 import zipfile
 import io
 import time
 
-# Configurazione Pagina
+# 1. Configurazione Pagina
 st.set_page_config(page_title="Rinomina Bulloni AI", page_icon="🔩")
 st.title("🔩 Automazione Bulloni")
 
-# 1. Recupero Chiave API dai Secrets
+# 2. Recupero Chiave API dai Secrets
 api_key = st.secrets.get("GEMINI_API_KEY")
 
 if not api_key:
     st.error("❌ Chiave API non trovata nei Secrets!")
     st.stop()
 
-# 2. Configurazione Modello (Versione corretta per evitare errore 404)
+# 3. Inizializzazione Google AI (Semplificata)
 genai.configure(api_key=api_key)
-model = genai.GenerativeModel('gemini-1.5-flash')
 
-uploaded_files = st.file_uploader("Carica le foto", accept_multiple_files=True, type=['jpg', 'jpeg', 'png'])
+# Caricamento file
+uploaded_files = st.file_uploader("Carica le foto dei bulloni", accept_multiple_files=True, type=['jpg', 'jpeg', 'png'])
 
 if uploaded_files:
     if st.button("🚀 Avvia Analisi"):
         zip_buffer = io.BytesIO()
         successo = 0
         
+        # Inizializziamo il modello qui dentro
+        model = genai.GenerativeModel('gemini-1.5-flash')
+        
         with zipfile.ZipFile(zip_buffer, "w") as zip_file:
             progress = st.progress(0)
+            status = st.empty()
+            
             for i, file in enumerate(uploaded_files):
+                nome_originale = file.name
+                status.text(f"Analizzando: {nome_originale}...")
+                
                 try:
                     img_bytes = file.getvalue()
                     
-                    # Chiamata con opzione versione specifica
-                    response = model.generate_content(
-                        [
-                            "Scrivi solo i numeri del primo e dell'ultimo bullone (es: 73-75).",
-                            {"mime_type": "image/jpeg", "data": img_bytes}
-                        ],
-                        request_options=RequestOptions(api_version='v1beta') # Forza la versione corretta
-                    )
+                    # Chiamata pulita senza parametri v1beta che creano errori
+                    response = model.generate_content([
+                        "Analizza l'immagine. Scrivi SOLO il numero del primo bullone e dell'ultimo separati da trattino (es: 73-75). Niente altro.",
+                        {"mime_type": "image/jpeg", "data": img_bytes}
+                    ])
                     
-                    testo = response.text.strip().replace(" ", "")
-                    nuovo_nome = f"bulloni {testo}.jpg" if "-" in testo else f"controlla_{file.name}"
-                    successo += 1
+                    # Prendiamo il testo e puliamolo
+                    risultato = response.text.strip().replace(" ", "")
+                    
+                    if "-" in risultato:
+                        nuovo_nome = f"bulloni {risultato}.jpg"
+                        successo += 1
+                    else:
+                        nuovo_nome = f"controlla_{nome_originale}"
+                        
                 except Exception as e:
-                    st.error(f"Errore su {file.name}: {e}")
-                    nuovo_nome = f"errore_{file.name}"
+                    st.error(f"Errore su {nome_originale}: {e}")
+                    nuovo_nome = f"errore_{nome_originale}"
 
                 zip_file.writestr(nuovo_nome, img_bytes)
                 progress.progress((i + 1) / len(uploaded_files))
-                time.sleep(1)
+                time.sleep(1) # Pausa per evitare blocchi della versione free
 
+        status.text("✅ Elaborazione finita!")
+        
         if successo > 0:
-            st.success("Analisi completata!")
-            st.download_button("💾 SCARICA ZIP", zip_buffer.getvalue(), "bulloni.zip")
+            st.success(f"Analisi completata! {successo} file rinominati correttamente.")
+            st.download_button("💾 SCARICA ZIP", zip_buffer.getvalue(), "bulloni_rinominati.zip")
+        else:
+            st.error("L'AI non ha restituito i numeri nel formato corretto. Riprova con foto più nitide.")
