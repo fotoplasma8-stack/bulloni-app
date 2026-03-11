@@ -9,15 +9,20 @@ import time
 st.set_page_config(page_title="Rinomina Bulloni", page_icon="🔩")
 st.title("🔩 Automazione Bulloni")
 
-# Recupero Chiave API dai Secrets
+# Recupero Chiave API
 api_key = st.secrets.get("GEMINI_API_KEY")
 
 if not api_key:
-    st.error("Configura la chiave API nei Secrets di Streamlit!")
+    st.error("Configura la chiave API nei Secrets!")
     st.stop()
 
-# Inizializzazione Client
-client = genai.Client(api_key=api_key)
+# INIZIALIZZAZIONE FORZATA SU VERSIONE V1 (Stabile)
+# Questo dovrebbe eliminare l'errore 404 della v1beta
+client = genai.Client(
+    api_key=api_key,
+    http_options={'api_version': 'v1'} 
+)
+
 MODEL_ID = "gemini-1.5-flash"
 
 uploaded_files = st.file_uploader("Carica le foto", accept_multiple_files=True, type=['jpg', 'jpeg', 'png'])
@@ -36,7 +41,7 @@ if uploaded_files:
                     status.text(f"Analizzando: {file.name}...")
                     img_data = file.getvalue()
                     
-                    # SINTASSI CORRETTA 2026: Usiamo types.Part per i dati binari
+                    # Chiamata al modello
                     response = client.models.generate_content(
                         model=MODEL_ID,
                         contents=[
@@ -47,7 +52,6 @@ if uploaded_files:
                     
                     testo = response.text.strip().replace(" ", "")
                     
-                    # Validazione minima del nome
                     if "-" in testo and len(testo) < 15:
                         nuovo_nome = f"bulloni {testo}.jpg"
                         successo += 1
@@ -60,7 +64,7 @@ if uploaded_files:
 
                 zip_file.writestr(nuovo_nome, img_data)
                 progress.progress((i + 1) / len(uploaded_files))
-                time.sleep(1) # Rispetto dei limiti API
+                time.sleep(1.2) # Pausa di sicurezza
 
         status.text("✅ Elaborazione finita!")
         
@@ -68,4 +72,4 @@ if uploaded_files:
             st.success(f"Completato! {successo} file pronti.")
             st.download_button("💾 SCARICA ZIP", zip_buffer.getvalue(), "bulloni_finiti.zip")
         else:
-            st.error("L'AI non ha riconosciuto il formato dei numeri. Riprova.")
+            st.error("L'AI non ha risposto correttamente. Verifica la tua API Key.")
