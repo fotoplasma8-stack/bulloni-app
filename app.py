@@ -64,3 +64,6 @@ if uploaded_files:
         if successo > 0:
             st.success("Completato!")
             st.download_button("💾 SCARICA ZIP", zip_buffer.getvalue(), "bulloni_finiti.zip")
+        if successo > 0:
+            st.success("Completato!")
+            st.download_button("💾 SCARICA ZIP", zip_buffer.getvalue(), "bulloni_finiti.zip")
