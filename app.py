@@ -12,13 +12,15 @@ st.title("🔩 Automazione Bulloni")
 api_key = st.secrets.get("GEMINI_API_KEY")
 
 if not api_key:
-    st.error("❌ Chiave API non trovata nei Secrets!")
+    st.error("❌ Chiave API non trovata nei Secrets! Controlla le impostazioni di Streamlit.")
     st.stop()
 
-# 3. Inizializzazione Google AI (Semplificata)
+# 3. Configurazione Google AI con nome modello universale
 genai.configure(api_key=api_key)
 
-# Caricamento file
+# Proviamo a usare il nome completo del modello per evitare l'errore 404
+MODEL_NAME = 'gemini-1.5-flash' 
+
 uploaded_files = st.file_uploader("Carica le foto dei bulloni", accept_multiple_files=True, type=['jpg', 'jpeg', 'png'])
 
 if uploaded_files:
@@ -26,8 +28,8 @@ if uploaded_files:
         zip_buffer = io.BytesIO()
         successo = 0
         
-        # Inizializziamo il modello qui dentro
-        model = genai.GenerativeModel('gemini-1.5-flash')
+        # Inizializzazione modello
+        model = genai.GenerativeModel(model_name=MODEL_NAME)
         
         with zipfile.ZipFile(zip_buffer, "w") as zip_file:
             progress = st.progress(0)
@@ -40,13 +42,13 @@ if uploaded_files:
                 try:
                     img_bytes = file.getvalue()
                     
-                    # Chiamata pulita senza parametri v1beta che creano errori
+                    # Chiamata standard
                     response = model.generate_content([
-                        "Analizza l'immagine. Scrivi SOLO il numero del primo bullone e dell'ultimo separati da trattino (es: 73-75). Niente altro.",
+                        "Analizza l'immagine dei bulloni. Scrivi SOLO il numero del primo bullone e dell'ultimo separati da trattino (es: 73-75). Non aggiungere altro testo.",
                         {"mime_type": "image/jpeg", "data": img_bytes}
                     ])
                     
-                    # Prendiamo il testo e puliamolo
+                    # Pulizia testo
                     risultato = response.text.strip().replace(" ", "")
                     
                     if "-" in risultato:
@@ -56,17 +58,18 @@ if uploaded_files:
                         nuovo_nome = f"controlla_{nome_originale}"
                         
                 except Exception as e:
+                    # Se l'errore persiste, mostriamo esattamente cosa dice l'API
                     st.error(f"Errore su {nome_originale}: {e}")
                     nuovo_nome = f"errore_{nome_originale}"
 
                 zip_file.writestr(nuovo_nome, img_bytes)
                 progress.progress((i + 1) / len(uploaded_files))
-                time.sleep(1) # Pausa per evitare blocchi della versione free
+                time.sleep(1.5) # Pausa leggermente più lunga per stabilità
 
         status.text("✅ Elaborazione finita!")
         
         if successo > 0:
-            st.success(f"Analisi completata! {successo} file rinominati correttamente.")
+            st.success(f"Analisi completata! {successo} file rinominati.")
             st.download_button("💾 SCARICA ZIP", zip_buffer.getvalue(), "bulloni_rinominati.zip")
         else:
-            st.error("L'AI non ha restituito i numeri nel formato corretto. Riprova con foto più nitide.")
+            st.error("L'AI non è riuscita a leggere i numeri. Verifica che la tua API Key sia attiva su Google AI Studio.")
