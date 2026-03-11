@@ -6,19 +6,14 @@ import io
 import time
 
 st.set_page_config(page_title="Rinomina Bulloni", page_icon="🔩")
-st.title("🔩 Automazione Bulloni")
+st.title("🔩 Automazione Bulloni (Piano Free)")
 
 api_key = st.secrets.get("GEMINI_API_KEY")
-
 if not api_key:
-    st.error("Configura la chiave API nei Secrets!")
+    st.error("Manca la chiave nei Secrets!")
     st.stop()
 
-# Inizializzazione standard
 client = genai.Client(api_key=api_key)
-
-# Cambiamo in PRO per evitare il bug del 404 sul FLASH
-MODEL_ID = "gemini-1.5-pro" 
 
 uploaded_files = st.file_uploader("Carica le foto", accept_multiple_files=True, type=['jpg', 'jpeg', 'png'])
 
@@ -32,30 +27,48 @@ if uploaded_files:
             status = st.empty()
             
             for i, file in enumerate(uploaded_files):
-                try:
-                    status.text(f"Analizzando: {file.name}...")
-                    img_data = file.getvalue()
-                    
-                    response = client.models.generate_content(
-                        model=MODEL_ID,
-                        contents=[
-                            "Dimmi il numero del primo e dell'ultimo bullone separati da trattino (es: 10-12).",
-                            types.Part.from_bytes(data=img_data, mime_type="image/jpeg")
-                        ]
-                    )
-                    
-                    testo = response.text.strip().replace(" ", "")
-                    nuovo_nome = f"bulloni {testo}.jpg" if "-" in testo else f"controlla_{file.name}"
-                    successo += 1
-                    
-                except Exception as e:
-                    st.error(f"Errore su {file.name}: {e}")
-                    nuovo_nome = f"errore_{file.name}"
-
-                zip_file.writestr(nuovo_nome, img_data)
+                img_data = file.getvalue()
+                nome_finale = f"errore_{file.name}"
+                
+                # Sistema di RETRY per il piano gratuito
+                for tentativo in range(3):
+                    try:
+                        status.text(f"Analizzando {file.name} (Tentativo {tentativo+1})...")
+                        
+                        response = client.models.generate_content(
+                            model="gemini-1.5-flash",
+                            contents=[
+                                "Analizza l'immagine. Scrivi solo il numero del primo e dell'ultimo bullone (es: 37-35).",
+                                types.Part.from_bytes(data=img_data, mime_type="image/jpeg")
+                            ]
+                        )
+                        
+                        testo = response.text.strip().replace(" ", "")
+                        if "-" in testo:
+                            nome_finale = f"bulloni {testo}.jpg"
+                            successo += 1
+                        else:
+                            nome_finale = f"check_{file.name}"
+                        
+                        break # Usciamo dal ciclo dei tentativi se ha funzionato
+                        
+                    except Exception as e:
+                        if "429" in str(e):
+                            status.warning(f"Quota raggiunta. Attesa di 30 secondi per sblocco...")
+                            time.sleep(30)
+                        else:
+                            status.error(f"Errore: {e}")
+                            break
+                
+                zip_file.writestr(nome_finale, img_data)
                 progress.progress((i + 1) / len(uploaded_files))
-                time.sleep(2) # Pausa per la quota free
-
+                
+                # PAUSA DI SICUREZZA tra una foto e l'altra (Piano Free)
+                time.sleep(5) 
+        
+        status.text("✅ Elaborazione terminata!")
         if successo > 0:
-            st.success("Analisi completata!")
-            st.download_button("💾 SCARICA ZIP", zip_buffer.getvalue(), "bulloni_finiti.zip")
+            st.success(f"Analisi completata! {successo} file rinominati.")
+            st.download_button("💾 SCARICA ZIP", zip_buffer.getvalue(), "bulloni.zip")
+
+st.info("Nota: Con il piano gratuito carichiamo un'immagine ogni 5-10 secondi per evitare blocchi.")
